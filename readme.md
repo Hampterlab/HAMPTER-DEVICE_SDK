@@ -85,9 +85,7 @@ SDK/
 │   │   └── YOUR_PROJECT_NAME/
 │   │       └── main.cpp           # Main entry point
 │   ├── modules/
-│   │   ├── your_tool.h            # Your custom tools
-│   │   ├── eye_controller.h       # LED animation controller
-│   │   ├── dynamic_pattern.h      # Pattern system
+│   │   ├── your_tool.h            # Your custom tools (PUT YOUR CODE HERE)
 │   │   └── tool_register.cpp      # Tool registration
 │   └── transports/
 │       └── topics.h               # MQTT topic definitions
@@ -239,4 +237,5 @@ g_portRegistry.addInPort("brightness", "float", "LED brightness",
 3. Check Core Server logs: `docker logs mcp-bridge`
 
 ### About TX Power
+
 - TX Power is set to 8.5 dBm. It's because of BUG in ESP32-C3. If you use other MCU, you can change it.
