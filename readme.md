@@ -155,14 +155,23 @@ public:
 Edit `src/modules/tool_register.cpp`:
 
 ```cpp
+#include "hooks.h"
 #include "registry.h"
+#include "port_registry.h"
 #include "my_tool.h"
 
 // Instantiate your tools
 static MyTool myTool;
 
-void registerAllTools(ToolRegistry& reg) {
+void register_tools(ToolRegistry& reg, const ToolConfig& cfg) {
+  (void)cfg;
   reg.add(&myTool);
+}
+
+// Optional: register ports in the same file
+void register_ports(PortRegistry& reg, const PortConfig& cfg) {
+  (void)cfg;
+  reg.addInPort("brightness", "float");
 }
 ```
 
@@ -178,29 +187,46 @@ Your tool will be announced to Core Server automatically.
 
 ## Port System (Experimental)
 
-### OutPort: Send Data to Core Server
-
-```cpp
-#include "port_registry.h"
-
-extern PortRegistry g_portRegistry;
-
-// Register outport (in init or setup)
-g_portRegistry.addOutPort("temperature", "float", "Current temperature");
-
-// Publish value (anywhere in code)
-g_portRegistry.publishOutPort("temperature", 25.5);
-```
+`register_ports(...)` in `src/modules/tool_register.cpp` is the single place to edit port features.
 
 ### InPort: Receive Data from Core Server
 
 ```cpp
-// Register inport with callback
-g_portRegistry.addInPort("brightness", "float", "LED brightness", 
-  [](float value) {
-    analogWrite(LED_PIN, (int)value);
-  }
-);
+#include "port_registry.h"
+
+void register_ports(PortRegistry& reg, const PortConfig& cfg) {
+  (void)cfg;
+  reg.addInPort("var_a", "float");
+  reg.addInPort("var_b", "float");
+  reg.addInPort("var_c", "float");
+}
+```
+
+### OutPort: Send Data to Core Server
+
+```cpp
+static float readTemperature() {
+  // Replace with real sensor reading
+  return 25.5f;
+}
+
+void register_ports(PortRegistry& reg, const PortConfig& cfg) {
+  (void)cfg;
+  reg.addOutPort(
+    "temperature",         // name
+    "float",               // data type
+    "Current temperature", // description
+    1000,                  // period(ms)
+    readTemperature        // callback
+  );
+}
+```
+
+### Formula Access (`var_a`, etc.)
+
+```cpp
+// Dynamic pattern modules can read registered InPort values via:
+// port_get_inport_value("var_a")
 ```
 
 ---
@@ -216,6 +242,19 @@ g_portRegistry.addInPort("brightness", "float", "LED brightness",
 | `mcp/dev/{id}/ports/announce` | → Server | Register ports |
 | `mcp/dev/{id}/ports/data` | → Server | OutPort values |
 | `mcp/dev/{id}/ports/set` | ← Server | InPort values |
+| `mcp/dev/{id}/claim` | ← Server | Claim token for signed command envelope |
+
+Signed command envelope (`cmd`) is also supported:
+
+```json
+{
+  "data": "{\"type\":\"device.command\", ...}",
+  "signature": "sha256-hmac-hex"
+}
+```
+
+By default, firmware runs in compatibility mode and accepts unsigned/plain command payloads too.
+Set `STRICT_SIGNED_COMMANDS=1` in build flags to require valid signatures when claim token exists.
 
 ---
 
