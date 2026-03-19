@@ -99,6 +99,7 @@ inline String topicEvt()         { return topicEvents(device_id); }
 inline String topicPortsAnnDev() { return topicPortsAnnounce(device_id); }
 inline String topicPortsDataDev(){ return topicPortsData(device_id); }
 inline String topicPortsSetDev() { return topicPortsSet(device_id); }
+inline String topicPortsStateDev(){ return topicPortsState(device_id); }
 inline String topicClaimDev()    { return topicClaim(device_id); }
 
 String loadClaimToken() {
@@ -332,17 +333,17 @@ void apply_wifi_tx_power() {
 // ========= MQTT Helpers (RTOS-safe) =========
 bool mqttPublishSafe(const String& topic, const String& msg, bool retain) {
   if (!mqtt.connected()) return false;
-  if (g_mqttMutex) xSemaphoreTake(g_mqttMutex, portMAX_DELAY);
+  if (g_mqttMutex) xSemaphoreTakeRecursive(g_mqttMutex, portMAX_DELAY);
   bool ok = mqtt.publish(topic.c_str(), msg.c_str(), retain);
-  if (g_mqttMutex) xSemaphoreGive(g_mqttMutex);
+  if (g_mqttMutex) xSemaphoreGiveRecursive(g_mqttMutex);
   return ok;
 }
 
 void mqttLoopSafe() {
   if (!mqtt.connected()) return;
-  if (g_mqttMutex) xSemaphoreTake(g_mqttMutex, portMAX_DELAY);
+  if (g_mqttMutex) xSemaphoreTakeRecursive(g_mqttMutex, portMAX_DELAY);
   mqtt.loop();
-  if (g_mqttMutex) xSemaphoreGive(g_mqttMutex);
+  if (g_mqttMutex) xSemaphoreGiveRecursive(g_mqttMutex);
 }
 
 // ========= OutPort에서 사용하는 helper =========
@@ -363,6 +364,29 @@ bool port_publish_data(const char* portName, float value) {
   bool ok = mqttPublishSafe(topicPortsDataDev(), payload, false);
   
   return ok;
+}
+
+bool port_publish_state(const char* portName, float value, bool accepted, const char* source) {
+  if (!mqtt.connected()) {
+    Serial.printf("[PORT] MQTT not connected, drop state port=%s\n", portName);
+    return false;
+  }
+
+  StaticJsonDocument<192> doc;
+  doc["port"] = portName;
+  doc["value"] = value;
+  doc["accepted"] = accepted;
+  doc["source"] = source && *source ? source : "ports.set";
+  doc["timestamp"] = isoNow();
+
+  String payload;
+  serializeJson(doc, payload);
+  return mqttPublishSafe(topicPortsStateDev(), payload, false);
+}
+
+void port_set_outport_value(const char* portName, float value) {
+  if (!portName || !*portName) return;
+  port_publish_data(portName, value);
 }
 
 // ========= MQTT Publishing =========
@@ -440,7 +464,7 @@ bool mqttConnect() {
 
   mqtt.setServer(CFG.mqtt_host.c_str(), CFG.mqtt_port);
 
-  if (g_mqttMutex) xSemaphoreTake(g_mqttMutex, portMAX_DELAY);
+  if (g_mqttMutex) xSemaphoreTakeRecursive(g_mqttMutex, portMAX_DELAY);
   bool ok = mqtt.connect(
     device_id.c_str(),         // client_id
     nullptr, nullptr,          // username/password
@@ -451,7 +475,7 @@ bool mqttConnect() {
   );
   if (!ok) {
     int st = mqtt.state();
-    if (g_mqttMutex) xSemaphoreGive(g_mqttMutex);
+    if (g_mqttMutex) xSemaphoreGiveRecursive(g_mqttMutex);
     Serial.printf("[MQTT] Connect failed (state=%d)\n", st);
     return false;
   }
@@ -464,7 +488,7 @@ bool mqttConnect() {
   bool subPort = mqtt.subscribe(portsSetTopic.c_str());
   bool subClaim = mqtt.subscribe(claimTopic.c_str());
 
-  if (g_mqttMutex) xSemaphoreGive(g_mqttMutex);
+  if (g_mqttMutex) xSemaphoreGiveRecursive(g_mqttMutex);
 
   Serial.printf("[MQTT] Connected & subscribed:\n");
   Serial.printf("       cmd       = '%s' (%s)\n",
@@ -530,9 +554,9 @@ void setupHttpHandlers() {
     prov->clear();
     if (mqtt.connected()) {
       clearRetainedMessages();
-      if (g_mqttMutex) xSemaphoreTake(g_mqttMutex, portMAX_DELAY);
+      if (g_mqttMutex) xSemaphoreTakeRecursive(g_mqttMutex, portMAX_DELAY);
       mqtt.disconnect();
-      if (g_mqttMutex) xSemaphoreGive(g_mqttMutex);
+      if (g_mqttMutex) xSemaphoreGiveRecursive(g_mqttMutex);
     }
     server.send(200, "text/plain", "Factory reset done. Rebooting...");
     delay(800);
@@ -585,20 +609,14 @@ void startRuntime() {
 
     // 1) ports/set 처리 → InPort 값 변경
     if (t == topicPortsSetDev()) {
-      StaticJsonDocument<256> doc;
-      DeserializationError err = deserializeJson(doc, payload, length);
-      if (err) {
-        Serial.printf("[MQTT] ports.set JSON parse error: %s\n", err.c_str());
-        return;
-      }
-      const char* portName = doc["port"] | nullptr;
-      float value          = doc["value"] | 0.0f;
-      if (!portName) {
-        Serial.println("[MQTT] ports.set missing 'port'");
+      String portName;
+      float value = 0.0f;
+      String rawPayload;
+      if (!g_portRegistry.parseInPortSetPayload(payload, length, portName, value, &rawPayload)) {
         return;
       }
 
-      g_portRegistry.handleInPortSet(String(portName), value);
+      g_portRegistry.handleInPortSet(portName, value, "mqtt.ports.set", true);
       return;
     }
 
@@ -698,7 +716,7 @@ void setup() {
   Serial.println("╚══════════════════════════════════════╝");
 
   // RTOS 리소스
-  g_mqttMutex    = xSemaphoreCreateMutex();
+  g_mqttMutex    = xSemaphoreCreateRecursiveMutex();
   g_toolJobQueue = xQueueCreate(4, sizeof(ToolJob));
   if (!g_toolJobQueue) {
     Serial.println("[RTOS] FAILED to create ToolJob queue!");

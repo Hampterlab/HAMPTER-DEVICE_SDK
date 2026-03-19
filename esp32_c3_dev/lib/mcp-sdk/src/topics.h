@@ -8,4 +8,3 @@ inline String topicPortsAnnounce(const String& id){ return String("mcp/dev/")+id
 inline String topicPortsData    (const String& id){ return String("mcp/dev/")+id+ "/ports/data"; }
 inline String topicPortsSet     (const String& id){ return String("mcp/dev/")+id+ "/ports/set"; }
 inline String topicPortsState   (const String& id){ return String("mcp/dev/")+id+ "/ports/state"; }
-inline String topicClaim        (const String& id){ return String("mcp/dev/")+id+ "/claim"; }
