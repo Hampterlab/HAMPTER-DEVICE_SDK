@@ -1,0 +1,31 @@
+# ESP-IDF generated state
+/build/
+/build-*/
+/managed_components/
+**/build/
+**/build-*/
+**/managed_components/
+**/sdkconfig
+**/sdkconfig.old
+**/results/
+
+# Host tools
+**/__pycache__/
+*.py[cod]
+*.obj
+*.exe
+*.log
+*.tmp
+eim_config.toml
+
+# Local secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db

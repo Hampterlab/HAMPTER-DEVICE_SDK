@@ -1,0 +1,112 @@
+menu "HAMPTER Device SDK"
+
+config HAMPTER_LOW_POWER_PROFILE
+    bool "Enable the ESP32-C3 connected low-power profile"
+    default y
+    select PM_ENABLE
+    select FREERTOS_USE_TICKLESS_IDLE
+    select PM_SLP_IRAM_OPT
+    select PM_RTOS_IDLE_OPT
+    help
+        Enables DFS and automatic light sleep while retaining Wi-Fi and the
+        inbound ObjectLink connection. The component selects every required
+        ESP-IDF facility so an importing application does not need to discover
+        hidden root-project sdkconfig requirements.
+
+config HAMPTER_PRODUCTION_BUILD
+    bool "Enable production firmware safety gates"
+    default y
+    help
+        Keeps development-only secret logging unavailable and enables build
+        checks intended for distributable firmware. The SDK defaults to this
+        safe mode. Only a local development image should turn it off.
+
+config HAMPTER_IO_TASK_STACK_BYTES
+    int "Resident I/O task stack bytes"
+    range 3072 8192
+    default 4096
+    help
+        Static stack reserved for the one resident SDK I/O task. Tune only
+        after measuring the high-water mark through provisioning, TLS and
+        reconnect stress.
+
+config HAMPTER_IO_TASK_PRIORITY
+    int "Resident I/O task priority"
+    range 2 10
+    default 5
+
+config HAMPTER_APP_IDLE_MAX_MS
+    int "Maximum idle wait inside HampterDevice::loop()"
+    range 1 1000
+    default 20
+    help
+        Maximum time the Arduino application task may sleep at the SDK
+        scheduler point when no Tool, InPort, reset-button, or due OutPort
+        work exists. Incoming Tool and Port work wakes it immediately. Set to
+        1 only for applications whose unrelated local loop logic genuinely
+        needs a 1 kHz service rate.
+
+config HAMPTER_PROVISIONING_HTTPD_STACK_BYTES
+    int "Browser provisioning HTTP task stack bytes"
+    range 4096 8192
+    default 5120
+    help
+        Stack reserved only while the unprovisioned device exposes its
+        WPA2 SoftAP browser portal. JSON input stays bounded and its decoded
+        strings use a separate heap arena; tune only after checking the HTTP
+        task high-water mark on the target ESP32-C3 build.
+
+config HAMPTER_MAX_TOOLS
+    int "Maximum registered Tools"
+    range 1 32
+    default 16
+
+config HAMPTER_MAX_PORTS
+    int "Maximum registered Ports (In + Out total)"
+    range 1 64
+    default 32
+
+config HAMPTER_METADATA_POOL_BYTES
+    int "Tool/Port metadata string arena bytes"
+    range 512 8192
+    default 2048
+
+config HAMPTER_TOOL_DESCRIPTOR_DEPTH
+    int "Tool descriptor ring depth"
+    range 1 8
+    default 4
+
+config HAMPTER_TOOL_BYTE_POOL_BYTES
+    int "Tool argument byte-pool bytes"
+    range 512 8192
+    default 2048
+
+config HAMPTER_TOOL_ARGUMENT_MAX_BYTES
+    int "Maximum encoded arguments for one Tool call"
+    range 128 7936
+    default 768
+
+config HAMPTER_TOOL_RESULT_POOL_BYTES
+    int "Tool result byte-pool bytes"
+    range 512 4096
+    default 2048
+
+config HAMPTER_TOOL_RESULT_MAX_BYTES
+    int "Maximum encoded JSON value bytes for one Tool call"
+    range 128 2048
+    default 768
+
+config HAMPTER_FRAME_PAYLOAD_BYTES
+    int "Maximum ObjectLink payload bytes"
+    range 1024 32768
+    default 4096
+
+config HAMPTER_DEVELOPMENT_LOG_SOFTAP_PASSWORD
+    bool "Log the SoftAP password on the development console"
+    depends on !HAMPTER_PRODUCTION_BUILD
+    default n
+    help
+        Logs the device's sole local setup secret. Enable only in a local
+        development firmware. Production sdkconfig must leave this disabled.
+
+endmenu
